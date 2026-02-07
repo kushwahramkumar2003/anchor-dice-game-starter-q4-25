@@ -9,7 +9,7 @@ use crate::{errors::DiceError, state::Bet};
 pub struct RefundBet<'info> {
     #[account(mut)]
     pub player: Signer<'info>,
-    ///CHECK: This is safe
+    /// CHECK: This is safe.
     pub house: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -21,7 +21,8 @@ pub struct RefundBet<'info> {
         mut,
         close = player,
         seeds = [b"bet", vault.key().as_ref(), bet.seed.to_le_bytes().as_ref()],
-        bump = bet.bump
+        bump = bet.bump,
+        has_one = player
     )]
     pub bet: Account<'info, Bet>,
     pub system_program: Program<'info, System>,
@@ -30,20 +31,16 @@ pub struct RefundBet<'info> {
 impl<'info> RefundBet<'info> {
     pub fn refund_bet(&mut self, bumps: &RefundBetBumps) -> Result<()> {
         let slot = Clock::get()?.slot;
-        require!((self.bet.slot - slot) > 1000, DiceError::TimeoutNotReached);
+        require!(slot.saturating_sub(self.bet.slot) > 1000, DiceError::TimeoutNotReached);
+
         let accounts = Transfer {
             from: self.vault.to_account_info(),
             to: self.player.to_account_info(),
         };
 
-        let signer_seeds: &[&[&[u8]]] =
-            &[&[b"vault", &self.house.key().to_bytes(), &[bumps.vault]]];
+        let signer_seeds: &[&[&[u8]]] = &[&[b"vault", &self.house.key().to_bytes(), &[bumps.vault]]];
 
-        let ctx = CpiContext::new_with_signer(
-            self.system_program.to_account_info(),
-            accounts,
-            signer_seeds,
-        );
+        let ctx = CpiContext::new_with_signer(self.system_program.to_account_info(), accounts, signer_seeds);
 
         transfer(ctx, self.bet.amount)
     }
